@@ -14,7 +14,8 @@ defmt = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
-# We're using a Pico by default on this template
+mini-float = { git = "https://github.com/frun36/mini-float.git"}
+
 rp-pico = "0.8"
 
 # cargo build/run

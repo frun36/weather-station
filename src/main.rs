@@ -3,6 +3,8 @@
 
 use rp_pico as bsp;
 
+use bsp::hal::gpio;
+
 use bsp::entry;
 use bsp::hal::{
     clocks::{init_clocks_and_plls, Clock},
@@ -11,12 +13,16 @@ use bsp::hal::{
     watchdog::Watchdog,
 };
 
-use embedded_hal::digital::v2::OutputPin;
-
 use panic_probe as _;
-
-use defmt::info;
 use defmt_rtt as _;
+
+use mini_float::f8;
+
+use display::Display;
+
+type LEDPin = gpio::Pin<gpio::DynPinId, gpio::FunctionSio<gpio::SioOutput>, gpio::PullDown>;
+
+mod display;
 
 #[entry]
 fn main() -> ! {
@@ -50,19 +56,21 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    // This is the correct pin on the Raspberry Pico board. On other boards, even if they have an
-    // on-board LED, it might need to be changed.
-    // Notably, on the Pico W, the LED is not connected to any of the RP2040 GPIOs but to the cyw43 module instead. If you have
-    // a Pico W and want to toggle a LED with a simple GPIO output pin, you can connect an external
-    // LED to one of the GPIO pins, and reference that pin here.
-    let mut led_pin = pins.gpio0.into_push_pull_output();
+    let mut display = Display::new(
+        pins.gpio2.into_push_pull_output().into_dyn_pin(),
+        pins.gpio3.into_push_pull_output().into_dyn_pin(),
+        pins.gpio4.into_push_pull_output().into_dyn_pin(),
+        pins.gpio5.into_push_pull_output().into_dyn_pin(),
+        pins.gpio6.into_push_pull_output().into_dyn_pin(),
+        pins.gpio7.into_push_pull_output().into_dyn_pin(),
+        pins.gpio8.into_push_pull_output().into_dyn_pin(),
+        pins.gpio9.into_push_pull_output().into_dyn_pin(),
+    );
 
     loop {
-        info!("on!");
-        led_pin.set_high().unwrap();
+        display.enable_all();
         delay.delay_ms(500);
-        info!("off!");
-        led_pin.set_low().unwrap();
+        display.disable_all();
         delay.delay_ms(500);
     }
 }
