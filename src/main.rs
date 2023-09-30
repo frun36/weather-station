@@ -13,8 +13,8 @@ use bsp::hal::{
     watchdog::Watchdog,
 };
 
-use panic_probe as _;
 use defmt_rtt as _;
+use panic_probe as _;
 
 use mini_float::f8;
 
@@ -67,10 +67,16 @@ fn main() -> ! {
         pins.gpio9.into_push_pull_output().into_dyn_pin(),
     );
 
+    display.enable_all();
+    delay.delay_ms(500);
+    display.disable_all();
+    delay.delay_ms(500);
+
+    let mut i: u8 = 0;
+
     loop {
-        display.enable_all();
+        display.display_u8(i);
         delay.delay_ms(500);
-        display.disable_all();
-        delay.delay_ms(500);
+        i += 1;
     }
 }
