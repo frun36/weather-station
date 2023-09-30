@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use embedded_hal::digital::v2::InputPin;
 use rp_pico as bsp;
 
 use bsp::hal::gpio;
@@ -26,8 +27,6 @@ mod display;
 
 #[entry]
 fn main() -> ! {
-    // info!("Program start");
-
     let mut pac = pac::Peripherals::take().unwrap();
     let core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
@@ -67,14 +66,18 @@ fn main() -> ! {
         pins.gpio9.into_push_pull_output().into_dyn_pin(),
     );
 
+    let button = pins.gpio15.into_pull_down_input();
+
     display.enable_all();
     delay.delay_ms(500);
     display.disable_all();
     delay.delay_ms(500);
 
-
     loop {
-        display.display_f8(f8::from_f32(1.23));
-        delay.delay_ms(15000);
+        if button.is_high().unwrap() {
+            display.display_f8(f8::from_f32(1.23));
+            delay.delay_ms(5000);
+            display.disable_all();
+        }
     }
 }
