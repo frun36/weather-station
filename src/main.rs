@@ -72,11 +72,9 @@ fn main() -> ! {
     display.disable_all();
     delay.delay_ms(500);
 
-    let mut i: u8 = 0;
 
     loop {
-        display.display_u8(i);
-        delay.delay_ms(500);
-        i += 1;
+        display.display_f8(f8::from_f32(1.23));
+        delay.delay_ms(15000);
     }
 }

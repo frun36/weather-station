@@ -215,7 +215,7 @@ dependencies = [
 [[package]]
 name = "mini-float"
 version = "0.1.0"
-source = "git+https://github.com/frun36/mini-float.git#7d46dc8904dee56d7df56be4dd7e068bb1f564c6"
+source = "git+https://github.com/frun36/mini-float.git#8c3fc09b3236a89287601c0bdbe66ba48c50e920"
 
 [[package]]
 name = "nb"
