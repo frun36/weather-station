@@ -70,9 +70,13 @@ fn main() -> ! {
     );
 
     display.enable_all();
-    delay.delay_ms(1000);
+    delay.delay_ms(1024);
     display.disable_all();
-    delay.delay_ms(1000);
+    delay.delay_ms(512);
+    display.roll_fwd(&mut delay, 128);
+    display.roll_bwd(&mut delay, 128);
+    delay.delay_ms(256);
+    display.disable_all();
 
     let button = pins.gpio15.into_pull_down_input();
 
@@ -82,8 +86,10 @@ fn main() -> ! {
 
     loop {
         if button.is_high().unwrap() {
+            display.roll_fwd(&mut delay, 128);
+            delay.delay_ms(256);
             display.disable_all();
-            delay.delay_ms(1000);
+
             let measurement = dht11.perform_measurement(&mut delay).unwrap_or_else(|e| {
                 match_error(e, &mut display, &mut delay);
                 Measurement {

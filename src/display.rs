@@ -1,5 +1,6 @@
 use crate::LEDPin;
 
+use cortex_m::delay::Delay;
 use embedded_hal::digital::v2::OutputPin;
 
 use mini_float::f8;
@@ -49,5 +50,19 @@ impl Display {
 
     pub fn display_f8(&mut self, x: f8) {
         self.display_u8(x.as_byte());
+    }
+
+    pub fn roll_fwd(&mut self, delay: &mut Delay, gap_ms: u32) {
+        for i in 0..8 {
+            self.display_u8(1 << (7 - i));
+            delay.delay_ms(gap_ms);
+        }
+    }
+
+    pub fn roll_bwd(&mut self, delay: &mut Delay, gap_ms: u32) {
+        for i in 0..8 {
+            self.display_u8(1 << i);
+            delay.delay_ms(gap_ms);
+        }
     }
 }
