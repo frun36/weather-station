@@ -3,7 +3,7 @@
 
 use cortex_m::delay::Delay;
 use dht11::{Dht11, Measurement};
-use embedded_hal::digital::v2::InputPin;
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 use rp_pico as bsp;
 
 use bsp::hal::gpio::{DynPinId, FunctionSio, InOutPin, Pin, PullDown, SioOutput};
@@ -70,12 +70,7 @@ fn main() -> ! {
     );
 
     display.enable_all();
-    delay.delay_ms(1024);
-    display.disable_all();
-    delay.delay_ms(512);
-    display.roll_fwd(&mut delay, 128);
-    display.roll_bwd(&mut delay, 128);
-    delay.delay_ms(256);
+    delay.delay_ms(1_000);
     display.disable_all();
 
     let button = pins.gpio15.into_pull_down_input();
@@ -86,23 +81,47 @@ fn main() -> ! {
 
     loop {
         if button.is_high().unwrap() {
-            display.roll_fwd(&mut delay, 128);
-            delay.delay_ms(256);
-            display.disable_all();
-
-            let measurement = dht11.perform_measurement(&mut delay).unwrap_or_else(|e| {
-                match_error(e, &mut display, &mut delay);
-                Measurement {
-                    temperature: 0,
-                    humidity: 0,
-                }
-            });
-
-            let temperature = measurement.temperature as f32 / 10_f32;
-
-            display.display_f8(f8::from_f32(temperature));
+            measurement_cycle(&mut dht11, &mut display, &mut delay);
         }
     }
+}
+
+fn measurement_cycle<GPIO, E>(dht11: &mut Dht11<GPIO>, display: &mut Display, delay: &mut Delay)
+where
+    GPIO: InputPin<Error = E> + OutputPin<Error = E>,
+{
+    display.roll_fwd(delay, 128);
+    delay.delay_ms(256);
+    display.disable_all();
+
+    let measurement = dht11.perform_measurement(delay).unwrap_or_else(|e| {
+        match_error(e, display, delay);
+        Measurement {
+            temperature: 0,
+            humidity: 0,
+        }
+    });
+
+    if measurement.temperature == 0 && measurement.humidity == 0 {
+        return;
+    }
+
+    let temperature = measurement.temperature as f32 * 0.1_f32; // Convert to Celsius
+    let humidity = measurement.humidity as f32 * 0.001_f32; // Convert to fraction
+
+    display.display_f8(f8::from_f32(temperature));
+    delay.delay_ms(10_000);
+    display.disable_all();
+
+    delay.delay_ms(200);
+
+    display.display_f8(f8::from_f32(humidity));
+    delay.delay_ms(10_000);
+    display.disable_all();
+
+    display.roll_bwd(delay, 128);
+    delay.delay_ms(256);
+    display.disable_all();
 }
 
 fn match_error<E>(e: dht11::Error<E>, display: &mut Display, delay: &mut Delay) {

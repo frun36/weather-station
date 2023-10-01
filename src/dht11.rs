@@ -44,11 +44,6 @@ where
         Dht11 { gpio }
     }
 
-    /// Destroys the driver, returning the GPIO instance.
-    pub fn destroy(self) -> GPIO {
-        self.gpio
-    }
-
     /// Performs a reading of the sensor.
     pub fn perform_measurement<D>(&mut self, delay: &mut D) -> Result<Measurement, Error<E>>
     where
