@@ -1,10 +1,11 @@
 #![no_std]
 #![no_main]
 
+use dht11::Dht11;
 use embedded_hal::digital::v2::InputPin;
 use rp_pico as bsp;
 
-use bsp::hal::gpio::{Pin, DynPinId, FunctionSio, SioOutput, PullDown};
+use bsp::hal::gpio::{DynPinId, FunctionSio, Pin, PullDown, SioOutput};
 
 use bsp::entry;
 use bsp::hal::{
@@ -70,9 +71,16 @@ fn main() -> ! {
     let button = pins.gpio15.into_pull_down_input();
 
     display.enable_all();
-    delay.delay_ms(500);
+    delay.delay_ms(1000);
     display.disable_all();
-    delay.delay_ms(500);
+
+    let mut dht11 = Dht11::new(pins.gpio16.into_function());
+
+    let measurement = dht11.perform_measurement(&mut delay).unwrap();
+
+    let temperature = measurement.temperature as f32 / 10_f32;
+
+    display.display_f8(f8::from_f32(temperature));
 
     loop {
         if button.is_high().unwrap() {
