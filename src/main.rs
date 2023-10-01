@@ -4,7 +4,7 @@
 use embedded_hal::digital::v2::InputPin;
 use rp_pico as bsp;
 
-use bsp::hal::gpio;
+use bsp::hal::gpio::{Pin, DynPinId, FunctionSio, SioOutput, PullDown};
 
 use bsp::entry;
 use bsp::hal::{
@@ -21,8 +21,9 @@ use mini_float::f8;
 
 use display::Display;
 
-type LEDPin = gpio::Pin<gpio::DynPinId, gpio::FunctionSio<gpio::SioOutput>, gpio::PullDown>;
+type LEDPin = Pin<DynPinId, FunctionSio<SioOutput>, PullDown>;
 
+mod dht11;
 mod display;
 
 #[entry]
