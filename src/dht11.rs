@@ -3,13 +3,13 @@ use embedded_hal::{
     digital::v2::{InputPin, OutputPin},
 };
 
+#[cfg(feature = "dwt")]
+use cortex_m::peripheral::DWT;
+
 /// How long to wait for a pulse on the data line (in microseconds).
 const TIMEOUT_US: u16 = 1_000;
 
-pub struct Dht11<GPIO> {
-    data_pin: GPIO,
-}
-
+/// Error type for this crate.
 #[derive(Debug)]
 pub enum Error<E> {
     /// Timeout during communication.
@@ -18,6 +18,12 @@ pub enum Error<E> {
     CrcMismatch,
     /// GPIO error.
     Gpio(E),
+}
+
+/// A DHT11 device.
+pub struct Dht11<GPIO> {
+    /// The concrete GPIO pin implementation.
+    gpio: GPIO,
 }
 
 /// Results of a reading performed by the DHT11.
@@ -33,10 +39,17 @@ impl<GPIO, E> Dht11<GPIO>
 where
     GPIO: InputPin<Error = E> + OutputPin<Error = E>,
 {
-    pub fn new(data_pin: GPIO) -> Self {
-        Dht11 { data_pin }
+    /// Creates a new DHT11 device connected to the specified pin.
+    pub fn new(gpio: GPIO) -> Self {
+        Dht11 { gpio }
     }
 
+    /// Destroys the driver, returning the GPIO instance.
+    pub fn destroy(self) -> GPIO {
+        self.gpio
+    }
+
+    /// Performs a reading of the sensor.
     pub fn perform_measurement<D>(&mut self, delay: &mut D) -> Result<Measurement, Error<E>>
     where
         D: DelayUs<u16> + DelayMs<u16>,
@@ -100,18 +113,6 @@ where
         Ok(())
     }
 
-    fn set_input(&mut self) -> Result<(), Error<E>> {
-        self.data_pin.set_high().map_err(Error::Gpio)
-    }
-
-    fn set_low(&mut self) -> Result<(), Error<E>> {
-        self.data_pin.set_low().map_err(Error::Gpio)
-    }
-
-    fn read_line(&self) -> Result<bool, Error<E>> {
-        self.data_pin.is_high().map_err(Error::Gpio)
-    }
-
     fn read_bit<D>(&mut self, delay: &mut D) -> Result<bool, Error<E>>
     where
         D: DelayUs<u16> + DelayMs<u16>,
@@ -143,5 +144,17 @@ where
 
         #[cfg(not(feature = "dwt"))]
         return Ok(u32::from(count));
+    }
+
+    fn set_input(&mut self) -> Result<(), Error<E>> {
+        self.gpio.set_high().map_err(Error::Gpio)
+    }
+
+    fn set_low(&mut self) -> Result<(), Error<E>> {
+        self.gpio.set_low().map_err(Error::Gpio)
+    }
+
+    fn read_line(&self) -> Result<bool, Error<E>> {
+        self.gpio.is_high().map_err(Error::Gpio)
     }
 }

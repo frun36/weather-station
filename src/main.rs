@@ -1,11 +1,12 @@
 #![no_std]
 #![no_main]
 
-use dht11::Dht11;
+use cortex_m::delay::Delay;
+use dht11::{Dht11, Measurement};
 use embedded_hal::digital::v2::InputPin;
 use rp_pico as bsp;
 
-use bsp::hal::gpio::{DynPinId, FunctionSio, Pin, PullDown, SioOutput};
+use bsp::hal::gpio::{DynPinId, FunctionSio, InOutPin, Pin, PullDown, SioOutput};
 
 use bsp::entry;
 use bsp::hal::{
@@ -68,25 +69,46 @@ fn main() -> ! {
         pins.gpio9.into_push_pull_output().into_dyn_pin(),
     );
 
-    let button = pins.gpio15.into_pull_down_input();
-
     display.enable_all();
     delay.delay_ms(1000);
     display.disable_all();
+    delay.delay_ms(1000);
 
-    let mut dht11 = Dht11::new(pins.gpio16.into_function());
+    let button = pins.gpio15.into_pull_down_input();
 
-    let measurement = dht11.perform_measurement(&mut delay).unwrap();
+    let dht11_pin = InOutPin::new(pins.gpio16);
 
-    let temperature = measurement.temperature as f32 / 10_f32;
-
-    display.display_f8(f8::from_f32(temperature));
+    let mut dht11 = Dht11::new(dht11_pin);
 
     loop {
         if button.is_high().unwrap() {
-            display.display_f8(f8::from_f32(1.23));
-            delay.delay_ms(5000);
             display.disable_all();
+            delay.delay_ms(1000);
+            let measurement = dht11.perform_measurement(&mut delay).unwrap_or_else(|e| {
+                match_error(e, &mut display, &mut delay);
+                Measurement {
+                    temperature: 0,
+                    humidity: 0,
+                }
+            });
+
+            let temperature = measurement.temperature as f32 / 10_f32;
+
+            display.display_f8(f8::from_f32(temperature));
         }
+    }
+}
+
+fn match_error<E>(e: dht11::Error<E>, display: &mut Display, delay: &mut Delay) {
+    let error_code: u8 = match e {
+        dht11::Error::Timeout => 0x81,
+        dht11::Error::CrcMismatch => 0x82,
+        dht11::Error::Gpio(_) => 0x84,
+    };
+    for _ in 0..3 {
+        display.display_u8(error_code);
+        delay.delay_ms(200);
+        display.disable_all();
+        delay.delay_ms(200);
     }
 }
