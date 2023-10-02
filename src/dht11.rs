@@ -1,29 +1,32 @@
-use embedded_hal::{
-    blocking::delay::{DelayMs, DelayUs},
-    digital::v2::{InputPin, OutputPin},
-};
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 
-#[cfg(feature = "dwt")]
-use cortex_m::peripheral::DWT;
+use cortex_m::delay::Delay;
+
+use bsp::hal::gpio::{self, InOutPin, Pin, PullDown};
+
+use rp_pico as bsp;
 
 /// How long to wait for a pulse on the data line (in microseconds).
 const TIMEOUT_US: u16 = 1_000;
 
-/// Error type for this crate.
+/// DHT11 Error type
 #[derive(Debug)]
-pub enum Error<E> {
+pub enum Error {
     /// Timeout during communication.
     Timeout,
     /// CRC mismatch.
     CrcMismatch,
     /// GPIO error.
-    Gpio(E),
+    Gpio(gpio::Error),
 }
 
+/// The pin type required for the DHT11 data pin
+pub type DHT11Pin =
+    InOutPin<Pin<bsp::hal::gpio::bank0::Gpio16, bsp::hal::gpio::FunctionNull, PullDown>>;
+
 /// A DHT11 device.
-pub struct Dht11<GPIO> {
-    /// The concrete GPIO pin implementation.
-    gpio: GPIO,
+pub struct Dht11 {
+    data_pin: DHT11Pin,
 }
 
 /// Results of a reading performed by the DHT11.
@@ -35,20 +38,14 @@ pub struct Measurement {
     pub humidity: u16,
 }
 
-impl<GPIO, E> Dht11<GPIO>
-where
-    GPIO: InputPin<Error = E> + OutputPin<Error = E>,
-{
+impl Dht11 {
     /// Creates a new DHT11 device connected to the specified pin.
-    pub fn new(gpio: GPIO) -> Self {
-        Dht11 { gpio }
+    pub fn new(data_pin: DHT11Pin) -> Self {
+        Dht11 { data_pin }
     }
 
     /// Performs a reading of the sensor.
-    pub fn perform_measurement<D>(&mut self, delay: &mut D) -> Result<Measurement, Error<E>>
-    where
-        D: DelayUs<u16> + DelayMs<u16>,
-    {
+    pub fn perform_measurement(&mut self, delay: &mut Delay) -> Result<Measurement, Error> {
         let mut data = [0u8; 5];
 
         // Perform initial handshake
@@ -86,10 +83,7 @@ where
         })
     }
 
-    fn perform_handshake<D>(&mut self, delay: &mut D) -> Result<(), Error<E>>
-    where
-        D: DelayUs<u16> + DelayMs<u16>,
-    {
+    fn perform_handshake(&mut self, delay: &mut Delay) -> Result<(), Error> {
         // Set pin as floating to let pull-up raise the line and start the reading process.
         self.set_input()?;
         delay.delay_ms(1);
@@ -108,23 +102,14 @@ where
         Ok(())
     }
 
-    fn read_bit<D>(&mut self, delay: &mut D) -> Result<bool, Error<E>>
-    where
-        D: DelayUs<u16> + DelayMs<u16>,
-    {
+    fn read_bit(&mut self, delay: &mut Delay) -> Result<bool, Error> {
         let low = self.wait_for_pulse(true, delay)?;
         let high = self.wait_for_pulse(false, delay)?;
         Ok(high > low)
     }
 
-    fn wait_for_pulse<D>(&mut self, level: bool, delay: &mut D) -> Result<u32, Error<E>>
-    where
-        D: DelayUs<u16> + DelayMs<u16>,
-    {
+    fn wait_for_pulse(&mut self, level: bool, delay: &mut Delay) -> Result<u32, Error> {
         let mut count = 0;
-
-        #[cfg(feature = "dwt")]
-        let start = DWT::get_cycle_count();
 
         while self.read_line()? != level {
             count += 1;
@@ -133,23 +118,18 @@ where
             }
             delay.delay_us(1);
         }
-
-        #[cfg(feature = "dwt")]
-        return Ok(DWT::get_cycle_count().wrapping_sub(start));
-
-        #[cfg(not(feature = "dwt"))]
         return Ok(u32::from(count));
     }
 
-    fn set_input(&mut self) -> Result<(), Error<E>> {
-        self.gpio.set_high().map_err(Error::Gpio)
+    fn set_input(&mut self) -> Result<(), Error> {
+        self.data_pin.set_high().map_err(Error::Gpio)
     }
 
-    fn set_low(&mut self) -> Result<(), Error<E>> {
-        self.gpio.set_low().map_err(Error::Gpio)
+    fn set_low(&mut self) -> Result<(), Error> {
+        self.data_pin.set_low().map_err(Error::Gpio)
     }
 
-    fn read_line(&self) -> Result<bool, Error<E>> {
-        self.gpio.is_high().map_err(Error::Gpio)
+    fn read_line(&self) -> Result<bool, Error> {
+        self.data_pin.is_high().map_err(Error::Gpio)
     }
 }

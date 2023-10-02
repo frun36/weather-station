@@ -2,18 +2,19 @@
 #![no_main]
 
 use cortex_m::delay::Delay;
-use dht11::{Dht11, Measurement};
-use embedded_hal::digital::v2::{InputPin, OutputPin};
+
+use embedded_hal::digital::v2::InputPin;
+
 use rp_pico as bsp;
-
-use bsp::hal::gpio::{DynPinId, FunctionSio, InOutPin, Pin, PullDown, SioOutput};
-
-use bsp::entry;
-use bsp::hal::{
-    clocks::{init_clocks_and_plls, Clock},
-    pac,
-    sio::Sio,
-    watchdog::Watchdog,
+use bsp::{
+    entry,
+    hal::{
+        clocks::{init_clocks_and_plls, Clock},
+        gpio::{DynPinId, FunctionSio, InOutPin, Pin, PullDown, SioOutput},
+        pac,
+        sio::Sio,
+        watchdog::Watchdog,
+    },
 };
 
 use defmt_rtt as _;
@@ -21,6 +22,7 @@ use panic_probe as _;
 
 use mini_float::f8;
 
+use dht11::{DHT11Pin, Dht11, Measurement};
 use display::Display;
 
 type LEDPin = Pin<DynPinId, FunctionSio<SioOutput>, PullDown>;
@@ -75,7 +77,7 @@ fn main() -> ! {
 
     let button = pins.gpio15.into_pull_down_input();
 
-    let dht11_pin = InOutPin::new(pins.gpio16);
+    let dht11_pin: DHT11Pin = InOutPin::new(pins.gpio16);
 
     let mut dht11 = Dht11::new(dht11_pin);
 
@@ -86,10 +88,7 @@ fn main() -> ! {
     }
 }
 
-fn measurement_cycle<GPIO, E>(dht11: &mut Dht11<GPIO>, display: &mut Display, delay: &mut Delay)
-where
-    GPIO: InputPin<Error = E> + OutputPin<Error = E>,
-{
+fn measurement_cycle(dht11: &mut Dht11, display: &mut Display, delay: &mut Delay) {
     display.roll_fwd(delay, 128);
     delay.delay_ms(256);
     display.disable_all();
@@ -124,7 +123,7 @@ where
     display.disable_all();
 }
 
-fn match_error<E>(e: dht11::Error<E>, display: &mut Display, delay: &mut Delay) {
+fn match_error(e: dht11::Error, display: &mut Display, delay: &mut Delay) {
     let error_code: u8 = match e {
         dht11::Error::Timeout => 0x81,
         dht11::Error::CrcMismatch => 0x82,
