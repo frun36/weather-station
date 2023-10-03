@@ -17,6 +17,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 mini-float = { git = "https://github.com/frun36/mini-float.git"}
 
 rp-pico = "0.8"
+littlefs2 = "0.4.0"
 
 # cargo build/run
 [profile.dev]
