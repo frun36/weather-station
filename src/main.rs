@@ -13,7 +13,8 @@ use bsp::{
         gpio::{DynPinId, FunctionSio, InOutPin, Pin, PullDown, SioOutput},
         pac,
         sio::Sio,
-        watchdog::Watchdog,
+        timer::{self, Instant},
+        watchdog::Watchdog, Timer,
     },
 };
 
@@ -38,9 +39,8 @@ fn main() -> ! {
     let sio = Sio::new(pac.SIO);
 
     // External high-speed crystal on the pico board is 12Mhz
-    let external_xtal_freq_hz = 12_000_000u32;
     let clocks = init_clocks_and_plls(
-        external_xtal_freq_hz,
+        bsp::XOSC_CRYSTAL_FREQ,
         pac.XOSC,
         pac.CLOCKS,
         pac.PLL_SYS,
@@ -52,6 +52,8 @@ fn main() -> ! {
     .unwrap();
 
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
+
+    let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
 
     let pins = bsp::Pins::new(
         pac.IO_BANK0,
