@@ -5,7 +5,6 @@ use cortex_m::delay::Delay;
 
 use embedded_hal::digital::v2::InputPin;
 
-use rp_pico as bsp;
 use bsp::{
     entry,
     hal::{
@@ -13,10 +12,11 @@ use bsp::{
         gpio::{DynPinId, FunctionSio, InOutPin, Pin, PullDown, SioOutput},
         pac,
         sio::Sio,
-        timer::{self, Instant},
-        watchdog::Watchdog, Timer,
+        watchdog::Watchdog,
+        Timer,
     },
 };
+use rp_pico as bsp;
 
 use defmt_rtt as _;
 use panic_probe as _;
@@ -30,6 +30,11 @@ type LEDPin = Pin<DynPinId, FunctionSio<SioOutput>, PullDown>;
 
 mod dht11;
 mod display;
+
+enum Command {
+    Measure,
+    Fun,
+}
 
 #[entry]
 fn main() -> ! {
@@ -83,9 +88,41 @@ fn main() -> ! {
 
     let mut dht11 = Dht11::new(dht11_pin);
 
+    let mut command = None;
+
     loop {
         if button.is_high().unwrap() {
-            measurement_cycle(&mut dht11, &mut display, &mut delay);
+            while button.is_high().unwrap() {}
+            let instant = timer.get_counter_low();
+            display.display_u8(0x81);
+            while timer.get_counter_low() - instant < 500_000 {
+                delay.delay_ms(100);
+                if button.is_high().unwrap() {
+                    command = Some(Command::Fun);
+                    break;
+                }
+            }
+            display.disable_all();
+
+            if let None = command {
+                command = Some(Command::Measure);
+            }
+            match command {
+                Some(c) => match c {
+                    Command::Measure => {
+                        measurement_cycle(&mut dht11, &mut display, &mut delay);
+                        // display.roll_fwd(&mut delay, 100);
+                        // display.disable_all();
+                    }
+                    Command::Fun => {
+                        display.roll_bwd(&mut delay, 100);
+                        display.disable_all();
+                    }
+                },
+                None => (),
+            }
+
+            command = None;
         }
     }
 }
