@@ -3,8 +3,6 @@
 
 use cortex_m::delay::Delay;
 
-use embedded_hal::digital::v2::InputPin;
-
 use bsp::{
     entry,
     hal::{
@@ -23,11 +21,13 @@ use panic_probe as _;
 
 use mini_float::f8;
 
+use button::Button;
 use dht11::{DHT11Pin, Dht11, Measurement};
 use display::Display;
 
 type LEDPin = Pin<DynPinId, FunctionSio<SioOutput>, PullDown>;
 
+mod button;
 mod dht11;
 mod display;
 
@@ -82,47 +82,31 @@ fn main() -> ! {
     delay.delay_ms(1_000);
     display.disable_all();
 
-    let button = pins.gpio15.into_pull_down_input();
+    let button = Button::new(pins.gpio15.into_pull_down_input().into_dyn_pin());
 
     let dht11_pin: DHT11Pin = InOutPin::new(pins.gpio16);
 
     let mut dht11 = Dht11::new(dht11_pin);
 
-    let mut command = None;
+    let mut command;
 
     loop {
-        if button.is_high().unwrap() {
-            while button.is_high().unwrap() {}
-            let instant = timer.get_counter_low();
-            display.display_u8(0x81);
-            while timer.get_counter_low() - instant < 500_000 {
-                delay.delay_ms(100);
-                if button.is_high().unwrap() {
-                    command = Some(Command::Fun);
-                    break;
-                }
-            }
-            display.disable_all();
-
-            if let None = command {
-                command = Some(Command::Measure);
+        if button.is_clicked().unwrap() {
+            command = Command::Measure;
+            if button.await_next_click(&mut delay, &timer).unwrap() {
+                command = Command::Fun;
             }
             match command {
-                Some(c) => match c {
-                    Command::Measure => {
-                        measurement_cycle(&mut dht11, &mut display, &mut delay);
-                        // display.roll_fwd(&mut delay, 100);
-                        // display.disable_all();
-                    }
-                    Command::Fun => {
-                        display.roll_bwd(&mut delay, 100);
-                        display.disable_all();
-                    }
-                },
-                None => (),
+                Command::Measure => {
+                    measurement_cycle(&mut dht11, &mut display, &mut delay);
+                    // display.roll_fwd(&mut delay, 100);
+                    // display.disable_all();
+                }
+                Command::Fun => {
+                    display.roll_bwd(&mut delay, 100);
+                    display.disable_all();
+                }
             }
-
-            command = None;
         }
     }
 }
