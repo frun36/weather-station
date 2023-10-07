@@ -11,6 +11,7 @@ pub struct Display {
 
 impl Display {
     #[allow(clippy::too_many_arguments)]
+    /// Creates new instance of `Display`
     pub fn new(
         sgn: LEDPin,
         exp2: LEDPin,
@@ -26,18 +27,21 @@ impl Display {
         }
     }
 
+    /// Enables all LEDs
     pub fn enable_all(&mut self) {
         for pin in &mut self.pins {
             pin.set_high().unwrap();
         }
     }
 
+    /// Disables all LEDs
     pub fn disable_all(&mut self) {
         for pin in &mut self.pins {
             pin.set_low().unwrap();
         }
     }
 
+    /// Displays a `u8` number on the `Display`
     pub fn display_u8(&mut self, x: u8) {
         for i in 0..8 {
             if (x & (1 << (7 - i))) >> (7 - i) == 1 {
@@ -48,10 +52,12 @@ impl Display {
         }
     }
 
+    /// Displays a `f8` number on the `Display`
     pub fn display_f8(&mut self, x: f8) {
         self.display_u8(x.as_byte());
     }
 
+    /// Rolls the `Display` LEDs in ascending order
     pub fn roll_fwd(&mut self, delay: &mut Delay, gap_ms: u32) {
         for i in 0..8 {
             self.display_u8(1 << (7 - i));
@@ -59,6 +65,7 @@ impl Display {
         }
     }
 
+    /// Rolls the `Display` LEDs in descending order
     pub fn roll_bwd(&mut self, delay: &mut Delay, gap_ms: u32) {
         for i in 0..8 {
             self.display_u8(1 << i);

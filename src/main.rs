@@ -38,12 +38,20 @@ enum Command {
 
 #[entry]
 fn main() -> ! {
+    // Initialize basic peripherals
     let mut pac = pac::Peripherals::take().unwrap();
     let core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
     let sio = Sio::new(pac.SIO);
 
-    // External high-speed crystal on the pico board is 12Mhz
+    let pins = bsp::Pins::new(
+        pac.IO_BANK0,
+        pac.PADS_BANK0,
+        sio.gpio_bank0,
+        &mut pac.RESETS,
+    );
+
+    // Initialize clocks, delay and timer
     let clocks = init_clocks_and_plls(
         bsp::XOSC_CRYSTAL_FREQ,
         pac.XOSC,
@@ -60,13 +68,7 @@ fn main() -> ! {
 
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
 
-    let pins = bsp::Pins::new(
-        pac.IO_BANK0,
-        pac.PADS_BANK0,
-        sio.gpio_bank0,
-        &mut pac.RESETS,
-    );
-
+    // Initialize devices
     let mut display = Display::new(
         pins.gpio2.into_push_pull_output().into_dyn_pin(),
         pins.gpio3.into_push_pull_output().into_dyn_pin(),
@@ -78,18 +80,18 @@ fn main() -> ! {
         pins.gpio9.into_push_pull_output().into_dyn_pin(),
     );
 
+    let button = Button::new(pins.gpio15.into_pull_down_input().into_dyn_pin());
+
+    let dht11_pin: DHT11Pin = InOutPin::new(pins.gpio16);
+    let mut dht11 = Dht11::new(dht11_pin);
+
+    // Blink display
     display.enable_all();
     delay.delay_ms(1_000);
     display.disable_all();
 
-    let button = Button::new(pins.gpio15.into_pull_down_input().into_dyn_pin());
-
-    let dht11_pin: DHT11Pin = InOutPin::new(pins.gpio16);
-
-    let mut dht11 = Dht11::new(dht11_pin);
-
+    // Main loop
     let mut command;
-
     loop {
         if button.is_clicked().unwrap() {
             command = Command::Measure;
@@ -111,6 +113,7 @@ fn main() -> ! {
     }
 }
 
+/// The whole process of measurement and showing the results
 fn measurement_cycle(dht11: &mut Dht11, display: &mut Display, delay: &mut Delay) {
     display.roll_fwd(delay, 128);
     delay.delay_ms(256);
@@ -146,6 +149,7 @@ fn measurement_cycle(dht11: &mut Dht11, display: &mut Display, delay: &mut Delay
     display.disable_all();
 }
 
+/// Displays correct error code
 fn match_error(e: dht11::Error, display: &mut Display, delay: &mut Delay) {
     let error_code: u8 = match e {
         dht11::Error::Timeout => 0x81,

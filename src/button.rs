@@ -11,15 +11,19 @@ pub struct Button {
 }
 
 impl Button {
+    /// Creates new `Button` instance
     pub fn new(button_pin: Pin<DynPinId, FunctionSio<bsp::hal::gpio::SioInput>, PullDown>) -> Self {
         Button { button_pin }
     }
 
     #[inline]
+    /// Checks whether a `Button` is currently clicked
     pub fn is_clicked(&self) -> Result<bool, Infallible> {
         self.button_pin.is_high()
     }
 
+    /// Waits for next click for a short time (e.g. to implement double-click functionality). 
+    /// Returns `true` if button was clicked in that time and `false` otherwise
     pub fn await_next_click(&self, delay: &mut Delay, timer: &Timer) -> Result<bool, Infallible> {
         // Wait for the button to be released
         delay.delay_ms(2);
