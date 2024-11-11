@@ -15,10 +15,13 @@ embassy-time = { version = "0.3.2", features = ["defmt", "defmt-timestamp-uptime
 embassy-rp = { version = "0.2.0", features = ["defmt", "unstable-pac", "time-driver", "critical-section-impl", "rp2040"] }
 embassy-sync = { version = "0.6.0", features = ["defmt"] }
 embassy-net = { version = "0.4.0", features = ["defmt", "tcp", "udp", "raw", "dhcpv4", "medium-ethernet", "dns", "proto-ipv4", "proto-ipv6", "multicast"] }
-cyw43 = { version = "0.2.0", features = ["defmt", "firmware-logs", "bluetooth"] }
+cyw43 =  { version = "0.2.0", features = ["defmt"] }
 cyw43-pio = { version = "0.2.0", features = ["defmt"] }
 static_cell = "2.1.0"
 portable-atomic = { version = "1.5", features = ["critical-section"] }
+embedded-io-async = "0.6.1"
+rand_core = "0.6.4"
+heapless = "0.8.0"
 
 [patch.crates-io]
 embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "fcbbef01cd3c5292be29b78b674f0593277545e7"}

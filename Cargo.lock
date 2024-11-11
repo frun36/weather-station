@@ -1497,8 +1497,11 @@ dependencies = [
  "embassy-rp",
  "embassy-sync",
  "embassy-time",
+ "embedded-io-async",
+ "heapless",
  "panic-probe",
  "portable-atomic",
+ "rand_core",
  "static_cell",
 ]
 
