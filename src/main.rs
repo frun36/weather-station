@@ -2,30 +2,30 @@
 #![no_main]
 
 use core::net::Ipv4Addr;
-use core::str::from_utf8;
-
-use core::fmt::Write as CoreWrite;
+use core::sync::atomic::{AtomicI8, AtomicU8, Ordering};
 use cyw43::{Control, JoinOptions};
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_dht::dht11::DHT11;
 use embassy_executor::Spawner;
-use embassy_net::tcp::TcpSocket;
 use embassy_net::{Ipv4Cidr, Stack, StackResources};
 use embassy_rp::bind_interrupts;
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, PIO0};
+use embassy_rp::peripherals::{DMA_CH0, PIN_27, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
-use embassy_time::{Delay, Duration};
-use embedded_io_async::Write;
+use embassy_time::{Delay, Timer};
+use http::HttpServer;
 use rand_core::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+mod http;
+
 include!("secrets.rs");
 
-const PORT: u16 = 80;
+static TEMPERATURE: AtomicI8 = AtomicI8::new(0);
+static HUMIDITY: AtomicU8 = AtomicU8::new(0);
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
@@ -44,62 +44,23 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 }
 
 #[embassy_executor::task]
-async fn tcp_server(
-    stack: Stack<'static>,
-    mut control: Control<'static>,
-    mut dht: DHT11<'static, Delay>,
-) {
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
-    let mut req = [0; 4096];
-    let mut res = heapless::String::<4096>::new();
+async fn dht11_task(pin: PIN_27) {
+    let mut dht = DHT11::new(pin, Delay);
 
     loop {
-        let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(Duration::from_secs(10)));
-
-        control.gpio_set(0, true).await;
-        info!("Listening on TCP port {}", PORT);
-        if let Err(e) = socket.accept(PORT).await {
-            warn!("Accept error: {:?}", e);
-            continue;
+        if let Ok(reading) = dht.read() {
+            TEMPERATURE.store(reading.get_temp(), Ordering::Relaxed);
+            HUMIDITY.store(reading.get_hum(), Ordering::Relaxed);
+            Timer::after_secs(3600).await;
         }
-
-        info!("Received connection from {:?}", socket.remote_endpoint());
-        control.gpio_set(0, true).await;
-
-        loop {
-            let _n = match socket.read(&mut req).await {
-                Ok(0) => {
-                    warn!("Read EOF");
-                    break;
-                }
-                Ok(n) => n,
-                Err(e) => {
-                    warn!("Read error: {:?}", e);
-                    break;
-                }
-            };
-
-            info!("Received: {}", from_utf8(&req).unwrap());
-
-            res.clear();
-            match dht.read() {
-                Ok(r) => {
-                    core::write!(&mut res, "HTTP/1.1 200 OK\nContent-Type: text/html\n\n<h3>T: {} Rh: {}</h3>", r.get_temp(), r.get_hum()).unwrap()
-                }
-                Err(e) => core::write!(&mut res, "HTTP/1/1 500 Internal Server Error\nContent-Type: text/plain\n\nDHT11 error: {}\n", e).unwrap(),
-            }
-
-            match socket.write_all(res.as_bytes()).await {
-                Ok(()) => {}
-                Err(e) => {
-                    warn!("Write error: {:?}", e);
-                    break;
-                }
-            };
-        }
+        Timer::after_millis(100).await;
     }
+}
+
+#[embassy_executor::task]
+async fn http_server(stack: Stack<'static>, control: Control<'static>) {
+    let http_server: HttpServer<'_, 4096> = HttpServer::new(stack, control);
+    http_server.run().await;
 }
 
 #[embassy_executor::main]
@@ -108,7 +69,6 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_rp::init(Default::default());
     let mut rng = RoscRng;
-    let dht = DHT11::new(p.PIN_27, Delay);
 
     let fw = include_bytes!("../cyw43-firmware/43439A0.bin");
     let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
@@ -180,5 +140,6 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    spawner.spawn(tcp_server(stack, control, dht)).unwrap();
+    spawner.spawn(http_server(stack, control)).unwrap();
+    spawner.spawn(dht11_task(p.PIN_27)).unwrap();
 }
