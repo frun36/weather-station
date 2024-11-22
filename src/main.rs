@@ -12,8 +12,11 @@ use embassy_net::{Ipv4Cidr, Stack, StackResources};
 use embassy_rp::bind_interrupts;
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, PIN_27, PIO0};
+use embassy_rp::peripherals::{DMA_CH0, PIN_27, PIO0, RTC};
 use embassy_rp::pio::{InterruptHandler, Pio};
+use embassy_rp::rtc::{DateTime, DayOfWeek, Rtc};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_time::{Delay, Timer};
 use http::HttpServer;
 use rand_core::RngCore;
@@ -26,6 +29,8 @@ include!("secrets.rs");
 
 static TEMPERATURE: AtomicI8 = AtomicI8::new(0);
 static HUMIDITY: AtomicU8 = AtomicU8::new(0);
+
+static RTC: Mutex<ThreadModeRawMutex, Option<Rtc<'_, RTC>>> = Mutex::new(None);
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
@@ -79,6 +84,27 @@ async fn main(spawner: Spawner) {
     //     probe-rs download 43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
     //let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     //let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
+
+    // Init RTC
+    let mut rtc = Rtc::new(p.RTC);
+    if !rtc.is_running() {
+        info!("Start RTC");
+        let now = DateTime {
+            year: 2024,
+            month: 11,
+            day: 23,
+            day_of_week: DayOfWeek::Saturday,
+            hour: 0,
+            minute: 0,
+            second: 0,
+        };
+        rtc.set_datetime(now).unwrap();
+    }
+    
+    {
+        *RTC.lock().await = Some(rtc);
+    }
+
 
     // Init cyw43
     let pwr = Output::new(p.PIN_23, Level::Low);

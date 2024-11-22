@@ -7,7 +7,7 @@ use embassy_time::Duration;
 use embedded_io_async::Write as _;
 use heapless::String;
 
-use crate::{HUMIDITY, TEMPERATURE};
+use crate::{HUMIDITY, RTC, TEMPERATURE};
 
 const PORT: u16 = 80;
 
@@ -72,7 +72,23 @@ impl<'a, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
 
                 core::write!(
                     &mut self.response,
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h3>T: {} Rh: {}</h3>",
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n",
+                )
+                .unwrap();
+
+                let rtc = RTC.lock().await;
+
+                if let Ok(dt) = rtc.as_ref().unwrap().now() {
+                    core::write!(
+                        &mut self.response,
+                        "<p>{}-{}-{} {:02}:{:02}</p>",
+                        dt.year, dt.month, dt.day, dt.hour, dt.minute
+                    ).unwrap();
+                }
+
+                core::write!(
+                    &mut self.response,
+                    "<h3>T: {} Rh: {}</h3>",
                     TEMPERATURE.load(Ordering::Relaxed),
                     HUMIDITY.load(Ordering::Relaxed)
                 )
