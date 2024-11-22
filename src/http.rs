@@ -1,4 +1,4 @@
-use core::{fmt::Write as _, str::from_utf8, sync::atomic::Ordering};
+use core::{fmt::Write as _, str::from_utf8};
 
 use cyw43::Control;
 use defmt::*;
@@ -7,7 +7,7 @@ use embassy_time::Duration;
 use embedded_io_async::Write as _;
 use heapless::String;
 
-use crate::{HUMIDITY, RTC, TEMPERATURE};
+use crate::devices;
 
 const PORT: u16 = 80;
 
@@ -76,23 +76,31 @@ impl<'a, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
                 )
                 .unwrap();
 
-                let rtc = RTC.lock().await;
-
-                if let Ok(dt) = rtc.as_ref().unwrap().now() {
+                let now = devices::rtc::now().await;
+                if let Some(dt) = now {
                     core::write!(
                         &mut self.response,
-                        "<p>{}-{}-{} {:02}:{:02}</p>",
-                        dt.year, dt.month, dt.day, dt.hour, dt.minute
-                    ).unwrap();
+                        "<p>{}-{}-{} {:02}:{:02}:{:02}</p>",
+                        dt.year,
+                        dt.month,
+                        dt.day,
+                        dt.hour,
+                        dt.minute,
+                        dt.second
+                    )
+                    .unwrap();
                 }
 
-                core::write!(
-                    &mut self.response,
-                    "<h3>T: {} Rh: {}</h3>",
-                    TEMPERATURE.load(Ordering::Relaxed),
-                    HUMIDITY.load(Ordering::Relaxed)
-                )
-                .unwrap();
+                let reading = devices::dht::read().await;
+                if let Some(reading) = reading {
+                    core::write!(
+                        &mut self.response,
+                        "<h3>T: {} Rh: {}</h3>",
+                        reading.get_temp(),
+                        reading.get_hum()
+                    )
+                    .unwrap();
+                }
 
                 match socket.write_all(self.response.as_bytes()).await {
                     Ok(()) => {}

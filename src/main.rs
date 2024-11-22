@@ -2,35 +2,25 @@
 #![no_main]
 
 use core::net::Ipv4Addr;
-use core::sync::atomic::{AtomicI8, AtomicU8, Ordering};
 use cyw43::{Control, JoinOptions};
 use cyw43_pio::PioSpi;
 use defmt::*;
-use embassy_dht::dht11::DHT11;
 use embassy_executor::Spawner;
 use embassy_net::{Ipv4Cidr, Stack, StackResources};
 use embassy_rp::bind_interrupts;
 use embassy_rp::clocks::RoscRng;
-use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, PIN_27, PIO0, RTC};
+use embassy_rp::gpio::{Level, Output, Pin};
+use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
-use embassy_rp::rtc::{DateTime, DayOfWeek, Rtc};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::mutex::Mutex;
-use embassy_time::{Delay, Timer};
 use http::HttpServer;
 use rand_core::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
+mod devices;
 mod http;
 
 include!("secrets.rs");
-
-static TEMPERATURE: AtomicI8 = AtomicI8::new(0);
-static HUMIDITY: AtomicU8 = AtomicU8::new(0);
-
-static RTC: Mutex<ThreadModeRawMutex, Option<Rtc<'_, RTC>>> = Mutex::new(None);
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
@@ -46,20 +36,6 @@ async fn cyw43_task(
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
     runner.run().await
-}
-
-#[embassy_executor::task]
-async fn dht11_task(pin: PIN_27) {
-    let mut dht = DHT11::new(pin, Delay);
-
-    loop {
-        if let Ok(reading) = dht.read() {
-            TEMPERATURE.store(reading.get_temp(), Ordering::Relaxed);
-            HUMIDITY.store(reading.get_hum(), Ordering::Relaxed);
-            Timer::after_secs(3600).await;
-        }
-        Timer::after_millis(100).await;
-    }
 }
 
 #[embassy_executor::task]
@@ -85,26 +61,9 @@ async fn main(spawner: Spawner) {
     //let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     //let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
-    // Init RTC
-    let mut rtc = Rtc::new(p.RTC);
-    if !rtc.is_running() {
-        info!("Start RTC");
-        let now = DateTime {
-            year: 2024,
-            month: 11,
-            day: 23,
-            day_of_week: DayOfWeek::Saturday,
-            hour: 0,
-            minute: 0,
-            second: 0,
-        };
-        rtc.set_datetime(now).unwrap();
-    }
-    
-    {
-        *RTC.lock().await = Some(rtc);
-    }
-
+    // Init readout devices
+    devices::rtc::init(p.RTC).await;
+    devices::dht::init(p.PIN_27.degrade()).await;
 
     // Init cyw43
     let pwr = Output::new(p.PIN_23, Level::Low);
@@ -167,5 +126,4 @@ async fn main(spawner: Spawner) {
     }
 
     spawner.spawn(http_server(stack, control)).unwrap();
-    spawner.spawn(dht11_task(p.PIN_27)).unwrap();
 }
