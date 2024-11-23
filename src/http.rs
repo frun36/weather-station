@@ -1,4 +1,4 @@
-use core::{fmt::Write as _, str::from_utf8};
+use core::{fmt::Write as _, str};
 
 use cyw43::Control;
 use defmt::*;
@@ -6,6 +6,7 @@ use embassy_net::{tcp::TcpSocket, Stack};
 use embassy_time::Duration;
 use embedded_io_async::Write as _;
 use heapless::Vec;
+use request::HttpRequest;
 
 use crate::devices;
 
@@ -68,7 +69,10 @@ impl<'a, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
                 };
                 self.buffer.truncate(n);
 
-                info!("Received: {}", from_utf8(self.buffer.as_slice()).unwrap());
+                let request_str = str::from_utf8(self.buffer.as_slice()).unwrap();
+                info!("Received:\n{}", request_str);
+                let http_request = HttpRequest::parse(request_str).unwrap();
+                info!("Parsed:\n{:?}", http_request);
 
                 self.buffer.clear();
 
