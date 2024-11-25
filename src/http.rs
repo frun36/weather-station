@@ -7,6 +7,7 @@ use embassy_time::Duration;
 use embedded_io_async::Write as _;
 use heapless::Vec;
 use request::HttpRequest;
+use response::{HttpResponse, StatusCode};
 
 use crate::devices;
 
@@ -71,45 +72,53 @@ impl<'a, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
                 self.buffer.truncate(n);
 
                 let request_str = str::from_utf8(self.buffer.as_slice()).unwrap();
-                info!("Received:\n{}", request_str);
+                debug!("Received:\n{}", request_str);
                 let http_request = HttpRequest::parse(request_str).unwrap();
-                info!("Parsed:\n{:?}", http_request);
+                info!("HTTP request:\n{:?}", http_request);
 
                 self.buffer.clear();
 
+                let response = match http_request.get_path() {
+                    "/" => { HttpResponse::new(StatusCode::Ok, INDEX) },
+                    "/rtc" => { HttpResponse::new(StatusCode::Ok, "time" ) },
+                    "/data" => { HttpResponse::new(StatusCode::Ok, "t, rh") }
+                    _ => { HttpResponse::new(StatusCode::NotFound, "") }
+                };
+
                 core::write!(
                     &mut self.buffer,
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n",
+                    "{}",
+                    response
                 )
                 .unwrap();
 
-                core::write!(&mut self.buffer, "{}", INDEX).unwrap();
+                info!("{}", str::from_utf8(&self.buffer).unwrap());
 
-                let now = devices::rtc::now().await;
-                if let Some(dt) = now {
-                    core::write!(
-                        &mut self.buffer,
-                        "<p>{}-{}-{} {:02}:{:02}:{:02}</p>",
-                        dt.year,
-                        dt.month,
-                        dt.day,
-                        dt.hour,
-                        dt.minute,
-                        dt.second
-                    )
-                    .unwrap();
-                }
+                // let now = devices::rtc::now().await;
+                // if let Some(dt) = now {
+                //     core::write!(
+                //         &mut self.buffer,
+                //         "<p>{}-{}-{} {:02}:{:02}:{:02}</p>",
+                //         dt.year,
+                //         dt.month,
+                //         dt.day,
+                //         dt.hour,
+                //         dt.minute,
+                //         dt.second
+                //     )
+                //     .unwrap();
+                // }
 
-                let reading = devices::dht::read().await;
-                if let Some(reading) = reading {
-                    core::write!(
-                        &mut self.buffer,
-                        "<h3>T: {} Rh: {}</h3>",
-                        reading.get_temp(),
-                        reading.get_hum()
-                    )
-                    .unwrap();
-                }
+                // let reading = devices::dht::read().await;
+                // if let Some(reading) = reading {
+                //     core::write!(
+                //         &mut self.buffer,
+                //         "<h3>T: {} Rh: {}</h3>",
+                //         reading.get_temp(),
+                //         reading.get_hum()
+                //     )
+                //     .unwrap();
+                // }
 
                 match socket.write_all(self.buffer.as_slice()).await {
                     Ok(()) => {}

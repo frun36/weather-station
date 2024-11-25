@@ -5,7 +5,7 @@ use heapless::{LinearMap, String};
 
 use super::response::StatusCode;
 
-#[derive(Format)]
+#[derive(Format, Clone, Copy)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Method {
     GET,
@@ -106,6 +106,14 @@ impl HttpRequest {
         }
 
         Ok(map)
+    }
+
+    pub fn get_method(&self) -> Method {
+        self.method
+    }
+
+    pub fn get_path(&self) -> &str {
+        &self.path
     }
 }
 

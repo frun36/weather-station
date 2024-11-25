@@ -1,21 +1,43 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>Weather station</title>
-    </head>
-    <body>
-        <form action="/set-rtc" method="POST">
-            <input type="number" name="y"><br>
-            <input type="number" name="mo"><br>
-            <input type="number" name="d"><br>
-            <select name="day_of_week">
-              <option>Mon</option><option>Tue</option><option>Wed</option>
-              <option>Thu</option><option>Fri</option><option>Sat</option>
-              <option>Sun</option>
-            </select><br>
-            <input type="number" name="h"><br>
-            <input type="number" name="m"><br>
-            <input type="submit" value="Set RTC"><br>
-          </form>
-    </body>
+
+<head>
+    <title>Weather station</title>
+    <script>
+        function fetchTime() {
+            fetch("/rtc")
+                .then(res => {
+                    console.log("Response:", res);
+                    return res.text();
+                })
+                .then(t => document.getElementById("rtc").innerHTML = t)
+                .catch(err => console.error("Error fetching time:", err));
+        }
+    </script>
+</head>
+
+<body>
+    <form action="/rtc" method="POST">
+        <input type="number" name="y"><br>
+        <input type="number" name="mo"><br>
+        <input type="number" name="d"><br>
+        <select name="day_of_week">
+            <option>Mon</option>
+            <option>Tue</option>
+            <option>Wed</option>
+            <option>Thu</option>
+            <option>Fri</option>
+            <option>Sat</option>
+            <option>Sun</option>
+        </select><br>
+        <input type="number" name="h"><br>
+        <input type="number" name="m"><br>
+        <input type="submit" value="Set RTC"><br>
+    </form>
+
+    <p id="rtc">Time: </p>
+    <button onclick="fetchTime()">Get time</button>
+    <p id="data">Data: </p>
+</body>
+
 </html>
