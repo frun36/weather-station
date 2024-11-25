@@ -4,18 +4,18 @@
         <title>Weather station</title>
     </head>
     <body>
-        <form action="/set-rtc" method="GET">
-            <input type="number" name="y">
-            <input type="number" name="mo">
-            <input type="number" name="d">
+        <form action="/set-rtc" method="POST">
+            <input type="number" name="y"><br>
+            <input type="number" name="mo"><br>
+            <input type="number" name="d"><br>
             <select name="day_of_week">
               <option>Mon</option><option>Tue</option><option>Wed</option>
               <option>Thu</option><option>Fri</option><option>Sat</option>
               <option>Sun</option>
-            </select>
-            <input type="number" name="h">
-            <input type="number" name="m">
-            <input type="submit" value="Set RTC">
+            </select><br>
+            <input type="number" name="h"><br>
+            <input type="number" name="m"><br>
+            <input type="submit" value="Set RTC"><br>
           </form>
     </body>
 </html>

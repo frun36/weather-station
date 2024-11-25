@@ -3,6 +3,8 @@ use core::str::FromStr;
 use defmt::Format;
 use heapless::{LinearMap, String};
 
+use super::response::StatusCode;
+
 #[derive(Format)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Method {
@@ -17,9 +19,9 @@ pub enum Method {
 }
 
 impl core::convert::TryFrom<&str> for Method {
-    type Error = ();
+    type Error = StatusCode;
 
-    fn try_from(s: &str) -> Result<Self, ()> {
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
             "GET" => Ok(Method::GET),
             "POST" => Ok(Method::POST),
@@ -29,56 +31,78 @@ impl core::convert::TryFrom<&str> for Method {
             "HEAD" => Ok(Method::HEAD),
             "OPTIONS" => Ok(Method::OPTIONS),
             "TRACE" => Ok(Method::TRACE),
-            _ => Err(()),
+            _ => Err(StatusCode::BadRequest),
         }
     }
 }
 
-type ParameterMap = LinearMap<String<16>, String<16>, 8>;
+type KeyValueMap = LinearMap<String<16>, String<16>, 8>;
 
 // For now ignores header and payload
 pub struct HttpRequest {
     method: Method,
     path: String<32>,
-    parameter_map: Option<ParameterMap>,
+    parameters: Option<KeyValueMap>,
+    payload: Option<KeyValueMap>,
 }
 
 impl HttpRequest {
-    // For now no error handling
-    pub fn parse(request_str: &str) -> Result<Self, ()> {
-        let (start_line, _) = request_str.split_once("\r\n").ok_or(())?;
-        let (method, remaining) = start_line.split_once(" ").ok_or(())?;
-        let (path, _) = remaining.split_once(" ").ok_or(())?;
+    pub fn parse(request_str: &str) -> Result<Self, StatusCode> {
+        let (header_str, payload_str) = request_str
+            .split_once("\r\n\r\n")
+            .ok_or(StatusCode::BadRequest)?;
+
+        let (method, path, parameters) = Self::parse_header(header_str)?;
+        let payload = if payload_str.is_empty() {
+            None
+        } else {
+            Some(Self::parse_key_value(payload_str)?)
+        };
+
+        Ok(Self {
+            method,
+            path,
+            parameters,
+            payload,
+        })
+    }
+
+    fn parse_header(
+        header_str: &str,
+    ) -> Result<(Method, String<32>, Option<KeyValueMap>), StatusCode> {
+        let (start_line, _) = header_str
+            .split_once("\r\n")
+            .ok_or(StatusCode::BadRequest)?;
+        let (method, remaining) = start_line.split_once(" ").ok_or(StatusCode::BadRequest)?;
+        let (path, _) = remaining.split_once(" ").ok_or(StatusCode::BadRequest)?;
 
         let (path, parameters) = match path.split_once("?") {
             Some((tup_path, tup_parameters)) => (tup_path, Some(tup_parameters)),
             None => (path, None),
         };
 
-        let method = Method::try_from(method)?;
-        let path = String::from_str(path).map_err(|_| {})?;
-        let parameter_map = match parameters {
-            Some(parameters) => Some(Self::parse_parameters(parameters)?),
-            None => None,
-        };
-
-        Ok(Self {
-            method,
-            path,
-            parameter_map,
-        })
+        Ok((
+            Method::try_from(method)?,
+            String::from_str(path).map_err(|_| StatusCode::UriTooLong)?,
+            match parameters {
+                Some(parameters) => Some(Self::parse_key_value(parameters)?),
+                None => None,
+            },
+        ))
     }
 
-    fn parse_parameters(text: &str) -> Result<ParameterMap, ()> {
-        let mut map: ParameterMap = LinearMap::new();
+    fn parse_key_value(text: &str) -> Result<KeyValueMap, StatusCode> {
+        let mut map: KeyValueMap = LinearMap::new();
 
         for pair in text.split("&") {
-            let (key, value) = pair.split_once("=").ok_or(())?;
+            let (key, value) = pair
+                .split_once("=")
+                .ok_or(StatusCode::UnprocessableContent)?;
             map.insert(
-                String::from_str(key).map_err(|_| {})?,
-                String::from_str(value).map_err(|_| {})?,
+                String::from_str(key).map_err(|_| StatusCode::UriTooLong)?,
+                String::from_str(value).map_err(|_| StatusCode::UriTooLong)?,
             )
-            .map_err(|_| {})?;
+            .map_err(|_| StatusCode::UriTooLong)?;
         }
 
         Ok(map)
@@ -89,8 +113,16 @@ impl Format for HttpRequest {
     fn format(&self, f: defmt::Formatter) {
         defmt::write!(f, "Method: {}\nPath: {}\n", self.method, self.path);
 
-        if let Some(parameter_map) = self.parameter_map.as_ref() {
+        if let Some(parameter_map) = self.parameters.as_ref() {
             for (key, value) in parameter_map.iter() {
+                defmt::write!(f, "{} = {}\n", key, value)
+            }
+        }
+
+        defmt::write!(f, "Payload:\n");
+
+        if let Some(payload_map) = self.payload.as_ref() {
+            for (key, value) in payload_map.iter() {
                 defmt::write!(f, "{} = {}\n", key, value)
             }
         }

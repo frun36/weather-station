@@ -11,6 +11,7 @@ use request::HttpRequest;
 use crate::devices;
 
 mod request;
+mod response;
 
 const PORT: u16 = 80;
 const INDEX: &str = include_str!("../static/index.html");
