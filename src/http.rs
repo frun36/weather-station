@@ -9,7 +9,7 @@ use embassy_net::{
 use embassy_time::Duration;
 use embedded_io_async::Write as _;
 use heapless::Vec;
-use request::HttpRequest;
+use request::{HttpRequest, Method};
 use response::{HttpResponse, StatusCode};
 
 use crate::devices;
@@ -96,7 +96,37 @@ impl<'a, 'b, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
         core::write!(header_buffer, "{}", response.header).unwrap();
 
         socket.write_all(header_buffer.as_slice()).await?;
-        socket.write_all(response.content.as_bytes()).await
+        socket.write_all(response.content).await
+    }
+
+    async fn write_time(buffer: &mut Vec<u8, BUF_SIZE>) {
+        let now = devices::rtc::now().await;
+        if let Some(dt) = now {
+            core::write!(
+                buffer,
+                "{}-{}-{} {:02}:{:02}:{:02}",
+                dt.year,
+                dt.month,
+                dt.day,
+                dt.hour,
+                dt.minute,
+                dt.second
+            )
+            .unwrap();
+        }
+    }
+
+    async fn write_temperature(buffer: &mut Vec<u8, BUF_SIZE>) {
+        let reading = devices::dht::read().await;
+        if let Some(reading) = reading {
+            core::write!(
+                buffer,
+                "T: {} Rh: {}",
+                reading.get_temp(),
+                reading.get_hum()
+            )
+            .unwrap();
+        }
     }
 
     pub async fn run(mut self) {
@@ -118,45 +148,29 @@ impl<'a, 'b, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
                         info!("HttpRequest: {}", http_request);
 
                         match http_request.path.as_str() {
-                            "/" => HttpResponse::new(StatusCode::Ok, INDEX),
-                            "/rtc" => HttpResponse::new(StatusCode::Ok, "time"),
-                            "/data" => HttpResponse::new(StatusCode::Ok, "t, rh"),
-                            _ => HttpResponse::new(StatusCode::NotFound, ""),
+                            "/" => HttpResponse::new(StatusCode::Ok, INDEX.as_bytes()),
+                            "/rtc" => match http_request.method {
+                                Method::GET => {
+                                    Self::write_time(&mut self.buffer).await;
+                                    HttpResponse::new(StatusCode::Ok, self.buffer.as_slice())
+                                }
+                                Method::POST => HttpResponse::empty(StatusCode::NotImplemented),
+                                _ => HttpResponse::empty(StatusCode::MethodNotAllowed),
+                            },
+                            "/data" => match http_request.method {
+                                Method::GET => {
+                                    Self::write_temperature(&mut self.buffer).await;
+                                    HttpResponse::new(StatusCode::Ok, self.buffer.as_slice())
+                                }
+                                _ => HttpResponse::empty(StatusCode::MethodNotAllowed),
+                            },
+                            _ => HttpResponse::empty(StatusCode::NotFound),
                         }
                     }
-                    Err(e) => HttpResponse::new(e, ""),
+                    Err(e) => HttpResponse::empty(e),
                 };
 
-                // let now = devices::rtc::now().await;
-                // if let Some(dt) = now {
-                //     core::write!(
-                //         &mut self.buffer,
-                //         "<p>{}-{}-{} {:02}:{:02}:{:02}</p>",
-                //         dt.year,
-                //         dt.month,
-                //         dt.day,
-                //         dt.hour,
-                //         dt.minute,
-                //         dt.second
-                //     )
-                //     .unwrap();
-                // }
-
-                // let reading = devices::dht::read().await;
-                // if let Some(reading) = reading {
-                //     core::write!(
-                //         &mut self.buffer,
-                //         "<h3>T: {} Rh: {}</h3>",
-                //         reading.get_temp(),
-                //         reading.get_hum()
-                //     )
-                //     .unwrap();
-                // }
-
-                if Self::send_response(&mut socket, response)
-                    .await
-                    .is_err()
-                {
+                if Self::send_response(&mut socket, response).await.is_err() {
                     break;
                 }
             }

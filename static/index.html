@@ -4,14 +4,11 @@
 <head>
     <title>Weather station</title>
     <script>
-        function fetchTime() {
-            fetch("/rtc")
-                .then(res => {
-                    console.log("Response:", res);
-                    return res.text();
-                })
-                .then(t => document.getElementById("rtc").innerHTML = t)
-                .catch(err => console.error("Error fetching time:", err));
+        function ajax(endpoint) {
+            fetch("/" + endpoint)
+                .then(res => res.text())
+                .then(t => document.getElementById(endpoint).innerHTML = t)
+                .catch(err => console.error("Error fetching ", endpoint, ": ", err));
         }
     </script>
 </head>
@@ -35,9 +32,10 @@
         <input type="submit" value="Set RTC"><br>
     </form>
 
-    <p id="rtc">Time: </p>
-    <button onclick="fetchTime()">Get time</button>
-    <p id="data">Data: </p>
+    <p>Time: <span id="rtc"></span> </p>
+    <button onclick="ajax('rtc')">Get time</button>
+    <p>Data: <span id="data"></span></p>
+    <button onclick="ajax('data')">Get data</button>
 </body>
 
 </html>

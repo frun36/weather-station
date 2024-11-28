@@ -61,15 +61,19 @@ impl HttpResponseHeader {
 
 pub struct HttpResponse<'a> {
     pub header: HttpResponseHeader,
-    pub content: &'a str,
+    pub content: &'a [u8],
 }
 
 impl<'a> HttpResponse<'a> {
-    pub fn new(status_code: StatusCode, content: &'a str) -> Self {
+    pub fn new(status_code: StatusCode, content: &'a [u8]) -> Self {
         Self {
             header: HttpResponseHeader::new(status_code, content.len()),
             content,
         }
+    }
+
+    pub fn empty(status_code: StatusCode) -> Self {
+        Self::new(status_code, "".as_bytes())
     }
 }
 
