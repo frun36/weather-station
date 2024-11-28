@@ -2,7 +2,10 @@ use core::{fmt::Write as _, str};
 
 use cyw43::Control;
 use defmt::*;
-use embassy_net::{tcp::TcpSocket, Stack};
+use embassy_net::{
+    tcp::{Error, TcpSocket},
+    Stack,
+};
 use embassy_time::Duration;
 use embedded_io_async::Write as _;
 use heapless::Vec;
@@ -18,81 +21,111 @@ const PORT: u16 = 80;
 const INDEX: &str = include_str!("../static/index.html");
 
 pub struct HttpServer<'a, const BUF_SIZE: usize> {
-    tx_buffer: [u8; BUF_SIZE],
-    rx_buffer: [u8; BUF_SIZE],
     buffer: Vec<u8, BUF_SIZE>,
     stack: Stack<'a>,
     control: Control<'a>,
 }
 
-impl<'a, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
+impl<'a, 'b, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
     pub fn new(stack: Stack<'a>, control: Control<'a>) -> Self {
-        let rx_buffer = [0; BUF_SIZE];
-        let tx_buffer = [0; BUF_SIZE];
         let buffer = Vec::<u8, BUF_SIZE>::new();
 
         Self {
-            tx_buffer,
-            rx_buffer,
             buffer,
             stack,
             control,
         }
     }
 
-    pub async fn run(mut self) {
-        loop {
-            let mut socket = TcpSocket::new(self.stack, &mut self.rx_buffer, &mut self.tx_buffer);
-            socket.set_timeout(Some(Duration::from_secs(5)));
+    async fn init_connection(
+        stack: Stack<'b>,
+        control: &mut Control<'_>,
+        rx_buffer: &'b mut [u8],
+        tx_buffer: &'b mut [u8],
+    ) -> Option<TcpSocket<'b>> {
+        let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
+        socket.set_timeout(Some(Duration::from_secs(5)));
 
-            self.control.gpio_set(0, true).await;
-            info!("Listening on TCP port {}", PORT);
+        info!("Listening on TCP port {}", PORT);
+        control.gpio_set(0, true).await;
 
-            if let Err(e) = socket.accept(PORT).await {
-                warn!("Accept error: {:?}", e);
-                return;
+        if let Err(e) = socket.accept(PORT).await {
+            warn!("Accept error: {:?}", e);
+            return None;
+        }
+
+        info!("Received connection from {:?}", socket.remote_endpoint());
+
+        Some(socket)
+    }
+
+    async fn get_request(
+        socket: &mut TcpSocket<'_>,
+        buffer: &mut Vec<u8, BUF_SIZE>,
+    ) -> Result<HttpRequest, StatusCode> {
+        unsafe {
+            buffer.set_len(BUF_SIZE);
+        }
+        let n = match socket.read(buffer.as_mut_slice()).await {
+            Ok(0) => {
+                warn!("Read EOF");
+                return Err(StatusCode::BadRequest);
             }
+            Ok(n) => n,
+            Err(e) => {
+                warn!("Read error: {:?}", e);
+                return Err(StatusCode::InternalServerError);
+            }
+        };
+        buffer.truncate(n);
 
-            info!("Received connection from {:?}", socket.remote_endpoint());
-            self.control.gpio_set(0, true).await;
+        let request_str = str::from_utf8(buffer.as_slice()).unwrap();
+        debug!("Received:\n{}", request_str);
+        let http_request = HttpRequest::parse(request_str).unwrap();
+
+        buffer.clear();
+
+        Ok(http_request)
+    }
+
+    async fn send_response(
+        socket: &mut TcpSocket<'_>,
+        response: HttpResponse<'_>,
+    ) -> Result<(), Error> {
+        let mut header_buffer: Vec<u8, 128> = Vec::new();
+        core::write!(header_buffer, "{}", response.header).unwrap();
+
+        socket.write_all(header_buffer.as_slice()).await?;
+        socket.write_all(response.content.as_bytes()).await
+    }
+
+    pub async fn run(mut self) {
+        let mut rx_buffer = [0; BUF_SIZE];
+        let mut tx_buffer = [0; BUF_SIZE];
+        loop {
+            let mut socket = Self::init_connection(
+                self.stack,
+                &mut self.control,
+                &mut rx_buffer,
+                &mut tx_buffer,
+            )
+            .await
+            .unwrap();
 
             loop {
-                unsafe { self.buffer.set_len(BUF_SIZE); }
-                let n = match socket.read(self.buffer.as_mut_slice()).await {
-                    Ok(0) => {
-                        warn!("Read EOF");
-                        break;
+                let response = match Self::get_request(&mut socket, &mut self.buffer).await {
+                    Ok(http_request) => {
+                        info!("HttpRequest: {}", http_request);
+
+                        match http_request.path.as_str() {
+                            "/" => HttpResponse::new(StatusCode::Ok, INDEX),
+                            "/rtc" => HttpResponse::new(StatusCode::Ok, "time"),
+                            "/data" => HttpResponse::new(StatusCode::Ok, "t, rh"),
+                            _ => HttpResponse::new(StatusCode::NotFound, ""),
+                        }
                     }
-                    Ok(n) => n,
-                    Err(e) => {
-                        warn!("Read error: {:?}", e);
-                        break;
-                    }
+                    Err(e) => HttpResponse::new(e, ""),
                 };
-                self.buffer.truncate(n);
-
-                let request_str = str::from_utf8(self.buffer.as_slice()).unwrap();
-                debug!("Received:\n{}", request_str);
-                let http_request = HttpRequest::parse(request_str).unwrap();
-                info!("HTTP request:\n{:?}", http_request);
-
-                self.buffer.clear();
-
-                let response = match http_request.get_path() {
-                    "/" => { HttpResponse::new(StatusCode::Ok, INDEX) },
-                    "/rtc" => { HttpResponse::new(StatusCode::Ok, "time" ) },
-                    "/data" => { HttpResponse::new(StatusCode::Ok, "t, rh") }
-                    _ => { HttpResponse::new(StatusCode::NotFound, "") }
-                };
-
-                core::write!(
-                    &mut self.buffer,
-                    "{}",
-                    response
-                )
-                .unwrap();
-
-                info!("{}", str::from_utf8(&self.buffer).unwrap());
 
                 // let now = devices::rtc::now().await;
                 // if let Some(dt) = now {
@@ -120,13 +153,12 @@ impl<'a, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
                 //     .unwrap();
                 // }
 
-                match socket.write_all(self.buffer.as_slice()).await {
-                    Ok(()) => {}
-                    Err(e) => {
-                        warn!("Write error: {:?}", e);
-                        break;
-                    }
-                };
+                if Self::send_response(&mut socket, response)
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
             }
         }
     }

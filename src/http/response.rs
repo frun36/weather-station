@@ -1,4 +1,4 @@
-use core::fmt::Display;
+use core::fmt;
 
 #[repr(u16)]
 #[derive(Debug, Clone, Copy)]
@@ -13,8 +13,8 @@ pub enum StatusCode {
     NotImplemented = 501,
 }
 
-impl Display for StatusCode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Display for StatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
             StatusCode::Ok => "OK",
             StatusCode::BadRequest => "Bad Request",
@@ -26,34 +26,62 @@ impl Display for StatusCode {
             StatusCode::NotImplemented => "Not Implemented",
         };
 
-        core::write!(f, "{}", message)?;
-        Ok(())
+        f.write_str(message)
     }
 }
 
-pub struct HttpResponse<'a> {
-    status_code: StatusCode,
-    payload: &'a str,
+pub enum ContentType {
+    TextHtml,
 }
 
-impl<'a> HttpResponse<'a> {
-    pub fn new(status_code: StatusCode, payload: &'a str) -> Self {
+impl fmt::Display for ContentType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let content_type_str = match self {
+            ContentType::TextHtml => "text/html",
+        };
+        f.write_str(content_type_str)
+    }
+}
+
+pub struct HttpResponseHeader {
+    status_code: StatusCode,
+    content_type: ContentType,
+    content_length: usize,
+}
+
+impl HttpResponseHeader {
+    pub fn new(status_code: StatusCode, content_length: usize) -> Self {
         Self {
             status_code,
-            payload,
+            content_type: ContentType::TextHtml,
+            content_length,
         }
     }
 }
 
-impl<'a> Display for HttpResponse<'a> {    
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+pub struct HttpResponse<'a> {
+    pub header: HttpResponseHeader,
+    pub content: &'a str,
+}
+
+impl<'a> HttpResponse<'a> {
+    pub fn new(status_code: StatusCode, content: &'a str) -> Self {
+        Self {
+            header: HttpResponseHeader::new(status_code, content.len()),
+            content,
+        }
+    }
+}
+
+impl fmt::Display for HttpResponseHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         core::write!(
             f,
-            "HTTP/1.1 {} {}\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
             self.status_code as u16,
             self.status_code,
-            self.payload.len(),
-            self.payload
+            self.content_type,
+            self.content_length
         )?;
 
         Ok(())

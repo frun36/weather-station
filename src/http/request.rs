@@ -40,10 +40,10 @@ type KeyValueMap = LinearMap<String<16>, String<16>, 8>;
 
 // For now ignores header and payload
 pub struct HttpRequest {
-    method: Method,
-    path: String<32>,
-    parameters: Option<KeyValueMap>,
-    payload: Option<KeyValueMap>,
+    pub method: Method,
+    pub path: String<32>,
+    pub parameters: Option<KeyValueMap>,
+    pub payload: Option<KeyValueMap>,
 }
 
 impl HttpRequest {
@@ -106,14 +106,6 @@ impl HttpRequest {
         }
 
         Ok(map)
-    }
-
-    pub fn get_method(&self) -> Method {
-        self.method
-    }
-
-    pub fn get_path(&self) -> &str {
-        &self.path
     }
 }
 
