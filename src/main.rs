@@ -12,7 +12,7 @@ use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Level, Output, Pin};
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
-use http::HttpServer;
+use http::server::HttpServer;
 use rand_core::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
