@@ -58,8 +58,12 @@ async fn http_server(stack: Stack<'static>, control: Control<'static>) {
             write_temperature(&mut response_buffer);
             HttpResponse::new(StatusCode::Ok, response_buffer)
         })
-        .route("/rtc", Method::POST, |_, _| {
-            HttpResponse::empty(StatusCode::NotImplemented)
+        .route("/rtc", Method::POST, |_, content| {
+            let status_code = match handlers::set_time(content) {
+                Ok(_) => StatusCode::Ok,
+                Err(c) => c,
+            };
+            HttpResponse::from_slice(status_code, "<a href='/'>back</a>".as_bytes()).unwrap()
         });
     http_server.run().await;
 }

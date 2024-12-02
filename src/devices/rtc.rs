@@ -31,3 +31,12 @@ pub async fn now() -> Option<DateTime> {
 
     rtc.as_mut().map(|rtc| rtc.now().unwrap())
 }
+
+pub async fn set_time(t: DateTime) -> Result<(), ()> {
+    let mut rtc = RTC.lock().await;
+    let rtc = rtc.as_mut().ok_or(())?;
+
+    rtc.set_datetime(t).map_err(|_| ())?;
+    
+    Ok(())
+}

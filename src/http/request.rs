@@ -40,6 +40,31 @@ impl core::convert::TryFrom<&str> for Method {
 
 pub type KeyValueMap = LinearMap<String<16>, String<16>, 8>;
 
+pub trait GetAs<T> {
+    fn get_as(&self, key: &str) -> Result<T, ()>;
+}
+
+pub trait GetStr {
+    fn get_str(&self, key: &str) -> Result<&str, ()>;
+}
+
+impl GetStr for KeyValueMap {
+    fn get_str(&self, key: &str) -> Result<&str, ()> {
+        let key = String::from_str(key).map_err(|_| ())?;
+        self.get(&key).ok_or(()).map(|val| val.as_str())
+    }
+}
+
+impl<T: FromStr> GetAs<T> for KeyValueMap {
+    fn get_as(&self, key: &str) -> Result<T, ()> {
+        let key = String::from_str(key).map_err(|_| ())?;
+        match self.get(&key) {
+            Some(val) => T::from_str(val).map_err(|_| ()),
+            None => Err(()),
+        }
+    }
+}
+
 // For now ignores header and payload
 pub struct HttpRequest {
     pub method: Method,
