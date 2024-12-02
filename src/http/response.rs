@@ -1,5 +1,7 @@
 use core::fmt;
 
+use heapless::Vec;
+
 #[repr(u16)]
 #[derive(Debug, Clone, Copy)]
 pub enum StatusCode {
@@ -59,21 +61,26 @@ impl HttpResponseHeader {
     }
 }
 
-pub struct HttpResponse<'a> {
+pub struct HttpResponse<const CAPACITY: usize> {
     pub header: HttpResponseHeader,
-    pub content: &'a [u8],
+    pub content: Vec<u8, CAPACITY>,
 }
 
-impl<'a> HttpResponse<'a> {
-    pub fn new(status_code: StatusCode, content: &'a [u8]) -> Self {
+impl<const CAPACITY: usize> HttpResponse<CAPACITY> {
+    pub fn new(status_code: StatusCode, content: Vec<u8, CAPACITY>) -> Self {
         Self {
             header: HttpResponseHeader::new(status_code, content.len()),
             content,
         }
     }
 
+    pub fn from_slice(status_code: StatusCode, content: &[u8]) -> Result<Self, ()> {
+        let content = Vec::from_slice(content)?;
+        Ok(Self::new(status_code, content))
+    }
+
     pub fn empty(status_code: StatusCode) -> Self {
-        Self::new(status_code, "".as_bytes())
+        Self::new(status_code, Vec::new())
     }
 }
 

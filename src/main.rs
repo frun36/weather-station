@@ -12,12 +12,15 @@ use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Level, Output, Pin};
 use embassy_rp::peripherals::{DMA_CH0, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
-use http::server::HttpServer;
+use handlers::{write_temperature, write_time, INDEX};
+use heapless::Vec;
+use http::{HttpResponse, HttpServer, Method, StatusCode};
 use rand_core::RngCore;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 mod devices;
+mod handlers;
 mod http;
 
 include!("secrets.rs");
@@ -40,7 +43,24 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 
 #[embassy_executor::task]
 async fn http_server(stack: Stack<'static>, control: Control<'static>) {
-    let http_server: HttpServer<'_, 4096> = HttpServer::new(stack, control);
+    let http_server: HttpServer<'_, 4096, 4096> = HttpServer::new(stack, control)
+        .route("/", Method::GET, |_, _| {
+            HttpResponse::from_slice(StatusCode::Ok, INDEX.as_bytes())
+                .unwrap_or(HttpResponse::empty(StatusCode::InternalServerError))
+        })
+        .route("/rtc", Method::GET, |_, _| {
+            let mut response_buffer: Vec<u8, 4096> = Vec::new();
+            write_time(&mut response_buffer);
+            HttpResponse::new(StatusCode::Ok, response_buffer)
+        })
+        .route("/data", Method::GET, |_, _| {
+            let mut response_buffer: Vec<u8, 4096> = Vec::new();
+            write_temperature(&mut response_buffer);
+            HttpResponse::new(StatusCode::Ok, response_buffer)
+        })
+        .route("/rtc", Method::POST, |_, _| {
+            HttpResponse::empty(StatusCode::NotImplemented)
+        });
     http_server.run().await;
 }
 

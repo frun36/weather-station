@@ -5,7 +5,9 @@ use heapless::{LinearMap, String};
 
 use super::response::StatusCode;
 
-#[derive(Format, Clone, Copy)]
+pub type RequestIndentification<'a> = (&'a str, Method);
+
+#[derive(Format, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Method {
     GET,
@@ -36,7 +38,7 @@ impl core::convert::TryFrom<&str> for Method {
     }
 }
 
-type KeyValueMap = LinearMap<String<16>, String<16>, 8>;
+pub type KeyValueMap = LinearMap<String<16>, String<16>, 8>;
 
 // For now ignores header and payload
 pub struct HttpRequest {
@@ -106,6 +108,10 @@ impl HttpRequest {
         }
 
         Ok(map)
+    }
+
+    pub fn get_identification(&self) -> RequestIndentification<'_> {
+        (self.path.as_str(), self.method)
     }
 }
 

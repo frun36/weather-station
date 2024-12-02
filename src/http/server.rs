@@ -2,6 +2,7 @@ use core::{fmt::Write as _, str};
 
 use super::request::{HttpRequest, Method};
 use super::response::{HttpResponse, StatusCode};
+use super::router::{RequestHandler, Router};
 use cyw43::Control;
 use defmt::*;
 use embassy_net::{
@@ -12,20 +13,20 @@ use embassy_time::Duration;
 use embedded_io_async::Write as _;
 use heapless::Vec;
 
-use crate::devices;
-
 const PORT: u16 = 80;
-const INDEX: &str = include_str!("../../static/index.html");
 
-pub struct HttpServer<'a, const BUF_SIZE: usize> {
+pub struct HttpServer<'a, const BUF_SIZE: usize, const RESPONSE_CAPACITY: usize> {
     rx_buffer: [u8; BUF_SIZE],
     tx_buffer: [u8; BUF_SIZE],
     buffer: Vec<u8, BUF_SIZE>,
     stack: Stack<'a>,
     control: Control<'a>,
+    router: Router<'a, RESPONSE_CAPACITY>,
 }
 
-impl<'a, 'b, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
+impl<'a, 'b, const BUF_SIZE: usize, const RESPONSE_CAPACITY: usize>
+    HttpServer<'a, BUF_SIZE, RESPONSE_CAPACITY>
+{
     pub fn new(stack: Stack<'a>, control: Control<'a>) -> Self {
         let rx_buffer = [0; BUF_SIZE];
         let tx_buffer = [0; BUF_SIZE];
@@ -37,6 +38,7 @@ impl<'a, 'b, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
             buffer,
             stack,
             control,
+            router: Router::empty(),
         }
     }
 
@@ -93,43 +95,26 @@ impl<'a, 'b, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
 
     async fn send_response(
         socket: &mut TcpSocket<'_>,
-        response: HttpResponse<'_>,
+        response: HttpResponse<RESPONSE_CAPACITY>,
     ) -> Result<(), Error> {
         let mut header_buffer: Vec<u8, 128> = Vec::new();
         core::write!(header_buffer, "{}", response.header).unwrap();
 
         socket.write_all(header_buffer.as_slice()).await?;
-        socket.write_all(response.content).await
+        socket.write_all(&response.content).await
     }
 
-    async fn write_time(buffer: &mut Vec<u8, BUF_SIZE>) {
-        let now = devices::rtc::now().await;
-        if let Some(dt) = now {
-            core::write!(
-                buffer,
-                "{}-{}-{} {:02}:{:02}:{:02}",
-                dt.year,
-                dt.month,
-                dt.day,
-                dt.hour,
-                dt.minute,
-                dt.second
-            )
-            .unwrap();
-        }
-    }
-
-    async fn write_temperature(buffer: &mut Vec<u8, BUF_SIZE>) {
-        let reading = devices::dht::read().await;
-        if let Some(reading) = reading {
-            core::write!(
-                buffer,
-                "T: {} Rh: {}",
-                reading.get_temp(),
-                reading.get_hum()
-            )
-            .unwrap();
-        }
+    pub fn route(
+        mut self,
+        path: &'a str,
+        method: Method,
+        handler: RequestHandler<RESPONSE_CAPACITY>,
+    ) -> Self {
+        self.router = self
+            .router
+            .route(path, method, handler)
+            .expect("Couldn't insert route handler - router full");
+        self
     }
 
     pub async fn run(mut self) {
@@ -144,30 +129,10 @@ impl<'a, 'b, const BUF_SIZE: usize> HttpServer<'a, BUF_SIZE> {
             .unwrap();
 
             loop {
-                let response = match Self::get_request(&mut socket, &mut self.buffer).await {
-                    Ok(http_request) => {
-                        info!("HttpRequest: {}", http_request);
+                let request = Self::get_request(&mut socket, &mut self.buffer).await;
 
-                        match http_request.path.as_str() {
-                            "/" => HttpResponse::new(StatusCode::Ok, INDEX.as_bytes()),
-                            "/rtc" => match http_request.method {
-                                Method::GET => {
-                                    Self::write_time(&mut self.buffer).await;
-                                    HttpResponse::new(StatusCode::Ok, self.buffer.as_slice())
-                                }
-                                Method::POST => HttpResponse::empty(StatusCode::NotImplemented),
-                                _ => HttpResponse::empty(StatusCode::MethodNotAllowed),
-                            },
-                            "/data" => match http_request.method {
-                                Method::GET => {
-                                    Self::write_temperature(&mut self.buffer).await;
-                                    HttpResponse::new(StatusCode::Ok, self.buffer.as_slice())
-                                }
-                                _ => HttpResponse::empty(StatusCode::MethodNotAllowed),
-                            },
-                            _ => HttpResponse::empty(StatusCode::NotFound),
-                        }
-                    }
+                let response = match request {
+                    Ok(http_request) => self.router.handle(http_request),
                     Err(e) => HttpResponse::empty(e),
                 };
 
